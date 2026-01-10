@@ -12,7 +12,9 @@ app.use(express.json());
 // ==========================================
 // ROUTES
 // ==========================================
-
+app.get("/", async (req, res) => {
+  res.send("Server Running Healthy");
+});
 // 1. ADMIN: Add User
 // Logic: Uses the DB sequence to auto-generate ID starting at 1001
 app.post("/admin/add-user", async (req, res) => {
@@ -115,6 +117,41 @@ app.put("/reset-password", async (req, res) => {
   }
 });
 
+// 5. MEDICAL: Add Record
+app.post("/medical-records/add", async (req, res) => {
+  const { id, record } = req.body;
+  try {
+    await sql`INSERT INTO medicalrecord (id, record) VALUES (${id}, ${record})`;
+    res.json({ success: true, message: "Record added" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Error adding record" });
+  }
+});
+
+// 6. MEDICAL: Get Records
+app.get("/medical-records/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await sql`SELECT record FROM medicalrecord WHERE id = ${id}`;
+    res.json({ success: true, records: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Error fetching records" });
+  }
+});
+// 7. MEDICAL: Delete Record
+app.delete("/medical-records/delete", async (req, res) => {
+  const { id, record } = req.body;
+  try {
+    // Since Primary Key is (id, record), we need both to identify the row
+    await sql`DELETE FROM medicalrecord WHERE id = ${id} AND record = ${record}`;
+    res.json({ success: true, message: "Record deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Error deleting record" });
+  }
+});
 // Start Server
 app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);

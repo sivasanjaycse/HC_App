@@ -1,27 +1,32 @@
 import React from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  SafeAreaView,
-  Platform,
-  StatusBar,
-} from "react-native";
+import { StyleSheet, Text, View, Platform, StatusBar,TouchableOpacity, } from "react-native";
+// 1. Remove SafeAreaView from the import above and add this:
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import UserQRCode from "./UserQRCode";
 
-export default function HomeScreen({ route }) {
-  // Retrieve the username passed from Login
-  const { username } = route.params;
+// ... existing imports
+// Keep existing imports and UserQRCode import
+
+export default function HomeScreen({ route, navigation }) {
+  // <-- ADD navigation prop
+  const { username, userId } = route.params;
 
   return (
     <View style={styles.container}>
-      {/* Custom Header */}
+      {/* ... Header Code Remains the Same ... */}
       <View style={styles.header}>
-        <SafeAreaView>
+        <SafeAreaView edges={["top", "left", "right"]}>
           <View style={styles.headerContent}>
-            {/* Left Side */}
-            <Text style={styles.logoText}>HealthMate</Text>
-
-            {/* Right Bottom Side */}
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons
+                name="medical"
+                size={28}
+                color="#fff"
+                style={{ marginRight: 8, marginBottom: 5 }}
+              />
+              <Text style={styles.logoText}>HealthMate</Text>
+            </View>
             <View style={styles.welcomeContainer}>
               <Text style={styles.welcomeText}>Hello</Text>
               <Text style={styles.usernameText}>{username}</Text>
@@ -30,12 +35,36 @@ export default function HomeScreen({ route }) {
         </SafeAreaView>
       </View>
 
-      {/* Placeholder Content */}
+      {/* NEW CONTENT AREA */}
       <View style={styles.content}>
-        <Text style={styles.placeholderText}>Welcome to your Dashboard</Text>
-        <Text style={styles.subText}>
-          Medical records and appointments will appear here.
-        </Text>
+        {/* 1. Show QR Code Component */}
+        <UserQRCode userId={userId} />
+
+        {/* 2. Navigation Buttons */}
+        <View style={styles.menuContainer}>
+          {/* Button 1: Realtime Data */}
+          <TouchableOpacity style={styles.menuButton}>
+            <Text style={styles.menuText}>Show Realtime Data</Text>
+            <Ionicons name="chevron-forward" size={24} color="#0056D2" />
+          </TouchableOpacity>
+
+          {/* Button 2: Medical Records (Active) */}
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() =>
+              navigation.navigate("MedicalRecords", { username, userId })
+            }
+          >
+            <Text style={styles.menuText}>Show Medical Records</Text>
+            <Ionicons name="chevron-forward" size={24} color="#0056D2" />
+          </TouchableOpacity>
+
+          {/* Button 3: Past Alerts */}
+          <TouchableOpacity style={styles.menuButton}>
+            <Text style={styles.menuText}>Past Alerts</Text>
+            <Ionicons name="chevron-forward" size={24} color="#0056D2" />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -48,58 +77,71 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "#0056D2",
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0, // Handle Notch/Statusbar
     borderBottomRightRadius: 25,
     borderBottomLeftRadius: 25,
     elevation: 8,
+    height: 150,
+    justifyContent: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
-    height: 150, // Fixed height to allow "bottom right" positioning
-    justifyContent: "center",
   },
   headerContent: {
     height: "100%",
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 15, // Push text slightly up from the very bottom edge
-    alignItems: "flex-end", // Aligns content to the bottom of the header
+    paddingBottom: 15,
+    alignItems: "flex-end",
   },
   logoText: {
     color: "#fff",
     fontSize: 24,
     fontWeight: "bold",
-    marginBottom: 5, // Slight adjustment
+    marginBottom: 5,
   },
-  welcomeContainer: {
-    alignItems: "flex-end",
-  },
-  welcomeText: {
-    color: "#E0E0E0",
-    fontSize: 14,
-  },
-  usernameText: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
+  welcomeContainer: { alignItems: "flex-end" },
+  welcomeText: { color: "#E0E0E0", fontSize: 14 },
+  usernameText: { color: "#fff", fontSize: 20, fontWeight: "bold" },
+
+  // Updated Content Area
   content: {
     flex: 1,
-    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 20,
+    paddingHorizontal: 20,
+  },
+
+  // New Menu Styles
+  menuContainer: {
+    width: "100%",
+    marginTop: 20,
+  },
+  menuButton: {
+    backgroundColor: "white",
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     padding: 20,
+    borderRadius: 15,
+    marginBottom: 15,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
   },
-  placeholderText: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 10,
-  },
-  subText: {
+  menuText: {
     fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
+  infoText: {
+    marginTop: 20,
     color: "#666",
     textAlign: "center",
+    fontSize: 14,
+    maxWidth: "80%",
   },
 });

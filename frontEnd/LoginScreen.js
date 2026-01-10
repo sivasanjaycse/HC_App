@@ -10,12 +10,16 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Dimensions, // <--- Added for screen dimensions
 } from "react-native";
-import { CameraView, Camera } from "expo-camera"; // Updated for newer Expo versions
+import { CameraView, Camera } from "expo-camera";
+import { Ionicons } from "@expo/vector-icons";
+import axios from "axios";
+
+const { width } = Dimensions.get("window");
 
 export default function LoginScreen({ navigation }) {
-  // --- CONFIG ---
-  const API_BASE = " https://calycine-flexile-sumiko.ngrok-free.dev"; // REPLACE X WITH YOUR IP
+  const API_BASE = "https://calycine-flexile-sumiko.ngrok-free.dev";
 
   // State
   const [userId, setUserId] = useState("");
@@ -27,12 +31,14 @@ export default function LoginScreen({ navigation }) {
   const [hasPermission, setHasPermission] = useState(null);
   const [scanned, setScanned] = useState(false);
 
+  // NEW: Track if we are scanning for login or password reset
+  const [isResetMode, setIsResetMode] = useState(false);
+
   // Reset Password Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [resetId, setResetId] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
-  // Camera Permission
   useEffect(() => {
     const getCameraPermissions = async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
@@ -41,7 +47,15 @@ export default function LoginScreen({ navigation }) {
     getCameraPermissions();
   }, []);
 
-  // --- API FUNCTIONS ---
+  // --- ACTIONS ---
+
+  const handleStartReset = () => {
+    // 1. Set mode to reset
+    setIsResetMode(true);
+    // 2. Start Scanning
+    setScanned(false);
+    setScanning(true);
+  };
 
   const handleLogin = async () => {
     if (!userId || !password) {
@@ -49,92 +63,146 @@ export default function LoginScreen({ navigation }) {
       return;
     }
     setLoading(true);
+
     try {
-      const res = await fetch(`${API_BASE}/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: userId, password }),
+      const response = await axios.post(`${API_BASE}/login`, {
+        id: userId,
+        password: password,
       });
-      const data = await res.json();
-      if (data.success) {
-        navigation.replace("Home", { username: data.name, userId: data.id });
+
+      if (response.data.success) {
+        navigation.replace("Home", {
+          username: response.data.name,
+          userId: response.data.id,
+        });
       } else {
-        Alert.alert("Failed", data.message);
+        Alert.alert("Login Failed", response.data.message);
       }
     } catch (err) {
-      Alert.alert("Error", "Network error");
+      const errorMessage =
+        err.response?.data?.message || "Could not connect to server";
+      Alert.alert("Error", errorMessage);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleResetPassword = async () => {
     if (!resetId || !newPassword) return;
     try {
-      const res = await fetch(`${API_BASE}/reset-password`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: resetId, newPassword }),
+      const response = await axios.put(`${API_BASE}/reset-password`, {
+        id: resetId,
+        newPassword: newPassword,
       });
-      const data = await res.json();
-      if (data.success) {
+
+      if (response.data.success) {
         Alert.alert("Success", "Password Updated");
         setModalVisible(false);
+        setNewPassword(""); // Clear password field
       } else {
-        Alert.alert("Error", data.message);
+        Alert.alert("Error", response.data.message);
       }
     } catch (err) {
-      Alert.alert("Error", "Network error");
+      const errorMessage = err.response?.data?.message || "Network error";
+      Alert.alert("Error", errorMessage);
     }
   };
 
   // --- QR LOGIC ---
   const handleBarCodeScanned = async ({ type, data }) => {
+    if (scanned) return;
     setScanned(true);
-    setScanning(false);
-    setLoading(true);
 
-    // Assume QR data is just the ID (e.g., "1001")
+    // CASE 1: RESET PASSWORD MODE
+    if (isResetMode) {
+      setScanning(false);
+      setResetId(data); // Pre-fill the ID from QR
+      setIsResetMode(false); // Turn off reset mode
+
+      // Small delay to make it feel natural before showing modal
+      setTimeout(() => {
+        Alert.alert(
+          "ID Scanned",
+          `User ID: ${data} detected. Enter new password.`
+        );
+        setModalVisible(true);
+      }, 500);
+      return;
+    }
+
+    // CASE 2: NORMAL LOGIN MODE
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/login-qr`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: data }),
+      const response = await axios.post(`${API_BASE}/login-qr`, {
+        id: data,
       });
-      const result = await res.json();
-      if (result.success) {
+
+      if (response.data.success) {
+        setScanning(false); // Close camera
         navigation.replace("Home", {
-          username: result.name,
-          userId: result.id,
+          username: response.data.name,
+          userId: response.data.id,
         });
       } else {
-        Alert.alert("Invalid QR", "User ID from QR not found.");
+        Alert.alert("Invalid QR", "User ID not found.");
+        setScanning(false);
       }
     } catch (err) {
-      Alert.alert("Error", "Network error");
+      const errorMessage = err.response?.data?.message || "Network error";
+      Alert.alert("Error", errorMessage);
+      setScanning(false);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // --- RENDER ---
 
   if (scanning) {
     if (hasPermission === null)
-      return <Text>Requesting camera permission...</Text>;
-    if (hasPermission === false) return <Text>No access to camera</Text>;
+      return <Text style={styles.centerText}>Requesting permission...</Text>;
+    if (hasPermission === false)
+      return <Text style={styles.centerText}>No access to camera</Text>;
+
     return (
       <View style={styles.container}>
         <CameraView
           onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          barcodeScannerSettings={{
-            barcodeTypes: ["qr"],
-          }}
+          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
           style={StyleSheet.absoluteFillObject}
         />
+
+        {/* VISUAL OVERLAY FOR SCANNER */}
+        <View style={styles.overlay}>
+          <View style={styles.unfocusedContainer}></View>
+
+          <View style={styles.middleContainer}>
+            <View style={styles.unfocusedContainer}></View>
+            <View style={styles.focusedContainer}>
+              {/* Corner Markers */}
+              <View style={[styles.corner, styles.topLeft]} />
+              <View style={[styles.corner, styles.topRight]} />
+              <View style={[styles.corner, styles.bottomLeft]} />
+              <View style={[styles.corner, styles.bottomRight]} />
+            </View>
+            <View style={styles.unfocusedContainer}></View>
+          </View>
+
+          <View style={styles.unfocusedContainer}>
+            <Text style={styles.scanInstruction}>
+              {isResetMode
+                ? "Scan QR to Reset Password"
+                : "Align QR Code within the frame"}
+            </Text>
+          </View>
+        </View>
+
         <TouchableOpacity
           style={styles.cancelButton}
           onPress={() => {
             setScanning(false);
             setScanned(false);
+            setIsResetMode(false); // Reset this in case they cancel a reset scan
           }}
         >
           <Text style={styles.buttonText}>Cancel Scan</Text>
@@ -149,28 +217,47 @@ export default function LoginScreen({ navigation }) {
       style={styles.container}
     >
       <View style={styles.logoContainer}>
+        <View style={styles.iconCircle}>
+          <Ionicons name="medical" size={60} color="#0056D2" />
+        </View>
         <Text style={styles.appTitle}>HealthMate</Text>
         <Text style={styles.appSubtitle}>Patient Portal</Text>
       </View>
 
       <View style={styles.form}>
         <Text style={styles.label}>User ID</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="1001"
-          keyboardType="numeric"
-          value={userId}
-          onChangeText={setUserId}
-        />
+        <View style={styles.inputContainer}>
+          <Ionicons
+            name="person-outline"
+            size={20}
+            color="#666"
+            style={styles.inputIcon}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="1001"
+            keyboardType="numeric"
+            value={userId}
+            onChangeText={setUserId}
+          />
+        </View>
 
         <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="******"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
+        <View style={styles.inputContainer}>
+          <Ionicons
+            name="lock-closed-outline"
+            size={20}
+            color="#666"
+            style={styles.inputIcon}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="******"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+        </View>
 
         <TouchableOpacity
           style={styles.loginBtn}
@@ -187,14 +274,22 @@ export default function LoginScreen({ navigation }) {
         <TouchableOpacity
           style={styles.qrBtn}
           onPress={() => {
+            setIsResetMode(false); // Ensure we are in login mode
             setScanned(false);
             setScanning(true);
           }}
         >
-          <Text style={styles.qrText}>Scan QR Code (No Password)</Text>
+          <Ionicons
+            name="qr-code-outline"
+            size={20}
+            color="#0056D2"
+            style={{ marginRight: 10 }}
+          />
+          <Text style={styles.qrText}>Scan QR Code</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setModalVisible(true)}>
+        {/* UPDATED: Triggers Scanner first */}
+        <TouchableOpacity onPress={handleStartReset}>
           <Text style={styles.forgotText}>Forgot/Reset Password?</Text>
         </TouchableOpacity>
       </View>
@@ -204,20 +299,52 @@ export default function LoginScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalView}>
             <Text style={styles.modalTitle}>Reset Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="User ID"
-              keyboardType="numeric"
-              value={resetId}
-              onChangeText={setResetId}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="New Password"
-              secureTextEntry
-              value={newPassword}
-              onChangeText={setNewPassword}
-            />
+
+            {/* Read-Only ID Field (Since it was scanned) */}
+            <View
+              style={[
+                styles.inputContainer,
+                {
+                  borderWidth: 1,
+                  borderColor: "#ddd",
+                  backgroundColor: "#f0f0f0",
+                },
+              ]}
+            >
+              <Ionicons
+                name="id-card-outline"
+                size={20}
+                color="#999"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={[styles.input, { color: "#666" }]}
+                placeholder="User ID"
+                value={resetId}
+                editable={false} // Disable editing
+              />
+            </View>
+
+            <View
+              style={[
+                styles.inputContainer,
+                { borderWidth: 1, borderColor: "#ddd" },
+              ]}
+            >
+              <Ionicons
+                name="key-outline"
+                size={20}
+                color="#666"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="New Password"
+                secureTextEntry
+                value={newPassword}
+                onChangeText={setNewPassword}
+              />
+            </View>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -240,27 +367,98 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
+// --- STYLES ---
+
+// --- STYLES ---
+
+const overlayColor = "rgba(0,0,0,0.5)"; // Darken background
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F9FF", justifyContent: "center" },
-  logoContainer: { alignItems: "center", marginBottom: 40 },
+  centerText: { marginTop: 50, textAlign: "center" },
+
+  // SCANNER OVERLAY STYLES
+  overlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  unfocusedContainer: {
+    flex: 1,
+    backgroundColor: overlayColor,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  middleContainer: {
+    flexDirection: "row",
+    // 1. Set the height of the square
+    height: 250,
+  },
+  focusedContainer: {
+    // 2. Remove 'flex: 1.5' and set a fixed width to match height
+    width: 250,
+    borderColor: "transparent",
+  },
+  scanInstruction: {
+    color: "white",
+    fontSize: 16,
+    marginBottom: 100,
+    fontWeight: "bold",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    padding: 10,
+    borderRadius: 5,
+    overflow: "hidden",
+  },
+
+  // CORNER MARKERS
+  corner: {
+    position: "absolute",
+    width: 30,
+    height: 30,
+    borderColor: "#0056D2",
+    borderWidth: 4,
+  },
+  topLeft: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
+  topRight: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
+  bottomLeft: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
+  bottomRight: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
+
+  // Rest of app styles (unchanged)
+  logoContainer: { alignItems: "center", marginBottom: 30 },
+  iconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "#E1F0FF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 15,
+  },
   appTitle: { fontSize: 32, fontWeight: "bold", color: "#0056D2" },
   appSubtitle: { fontSize: 16, color: "#666" },
   form: { paddingHorizontal: 30 },
   label: { marginBottom: 5, color: "#333", fontWeight: "600" },
-  input: {
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#fff",
-    padding: 15,
     borderRadius: 10,
     marginBottom: 15,
     borderWidth: 1,
     borderColor: "#ddd",
+    paddingHorizontal: 10,
   },
+  inputIcon: { marginRight: 10 },
+  input: { flex: 1, paddingVertical: 15, fontSize: 16 },
   loginBtn: {
     backgroundColor: "#0056D2",
     padding: 15,
     borderRadius: 10,
     alignItems: "center",
     marginBottom: 10,
+    marginTop: 10,
   },
   loginText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
   qrBtn: {
@@ -270,6 +468,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#0056D2",
+    flexDirection: "row",
+    justifyContent: "center",
   },
   qrText: { color: "#0056D2", fontWeight: "bold" },
   forgotText: { textAlign: "center", marginTop: 20, color: "#666" },
@@ -282,7 +482,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   buttonText: { color: "white", fontWeight: "bold" },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
@@ -298,7 +497,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    marginBottom: 15,
+    marginBottom: 20,
     textAlign: "center",
   },
   modalButtons: {
