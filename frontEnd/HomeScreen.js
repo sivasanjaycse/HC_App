@@ -1,5 +1,12 @@
 import React from "react";
-import { StyleSheet, Text, View, Platform, StatusBar,TouchableOpacity, } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  Platform,
+  StatusBar,
+  TouchableOpacity,
+} from "react-native";
 // 1. Remove SafeAreaView from the import above and add this:
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -43,7 +50,12 @@ export default function HomeScreen({ route, navigation }) {
         {/* 2. Navigation Buttons */}
         <View style={styles.menuContainer}>
           {/* Button 1: Realtime Data */}
-          <TouchableOpacity style={styles.menuButton}>
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() =>
+              navigation.navigate("RealtimeData", { username, userId })
+            }
+          >
             <Text style={styles.menuText}>Show Realtime Data</Text>
             <Ionicons name="chevron-forward" size={24} color="#0056D2" />
           </TouchableOpacity>
