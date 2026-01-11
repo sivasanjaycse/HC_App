@@ -5,7 +5,8 @@ const sql = require("./dbconnect"); // Importing your existing connection
 const axios=require("axios");
 const app = express();
 const port = process.env.PORT || 5000;
-
+const { Expo } = require('expo-server-sdk');
+let expo = new Expo();
 app.use(cors());
 app.use(express.json());
 
@@ -165,9 +166,6 @@ app.post('/users/push-token', async (req, res) => {
     }
 });
 
-// ... (Your other Login/Medical routes) ...
-
-
 // ==========================================
 // 2. BACKGROUND WORKER (Updated for Single Object)
 // ==========================================
@@ -236,14 +234,17 @@ async function processAlert(alertObj) {
 async function sendPushNotification(token, type, value, time) {
     if (!Expo.isExpoPushToken(token)) return;
 
-    const messageBody = `${type.replace('_', ' ')} detected! Value: ${value}. Time: ${time}`;
+    const messageBody = `Warning !!! ${type.replace('_', ' ')} detected! Value: ${value}. The Patient need immediate Assistance`;
 
-    const messages = [{
+const messages = [{
         to: token,
-        sound: 'default',
-        title: '⚠️ Health Alert',
+        sound: 'default', 
+        title: '⚠️ CRITICAL HEALTH ALERT', 
         body: messageBody,
         data: { type, value, time },
+        priority: 'high',           
+                channelId: 'critical_alerts', 
+                
     }];
 
     try {
@@ -257,13 +258,24 @@ async function sendPushNotification(token, type, value, time) {
     }
 }
 
-// ==========================================
-// 3. START
-// ==========================================
+app.get('/alerts/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const result = await sql`
+      SELECT * FROM pastalerts 
+      WHERE user_id = ${userId}
+      ORDER BY id DESC
+    `;
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error("Error fetching alerts:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch alerts" });
+  }
+});
 
 app.listen(port, () => {
     console.log(`Backend server running on port ${port}`);
-    
-    // Poll every 5 seconds
     setInterval(pollFirebase, 5000);
 });

@@ -5,6 +5,9 @@ import LoginScreen from "./LoginScreen";
 import HomeScreen from "./HomeScreen";
 import MedicalRecordsScreen from "./MedicalRecordsScreen"; // <--- IMPORT THIS
 import RealtimeDataScreen from "./RealtimeDataScreen";
+import PastAlertsScreen from './PastAlertsScreen'; // Import it
+
+// ... inside your Stack.Navigator ...
 
 const Stack = createNativeStackNavigator();
 
@@ -16,6 +19,11 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="MedicalRecords" component={MedicalRecordsScreen} />
         <Stack.Screen name="RealtimeData" component={RealtimeDataScreen} />
+        <Stack.Screen 
+  name="PastAlerts" 
+  component={PastAlertsScreen} 
+  options={{ headerShown: false }} 
+/>
       </Stack.Navigator>
     </NavigationContainer>
   );

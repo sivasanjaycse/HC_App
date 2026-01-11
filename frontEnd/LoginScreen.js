@@ -62,11 +62,13 @@ export default function LoginScreen({ navigation }) {
   // --- NEW FUNCTION: REGISTER FOR PUSH NOTIFICATIONS ---
   const registerForPushNotificationsAsync = async () => {
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
+      await Notifications.setNotificationChannelAsync('critical_alerts', { // NEW CHANNEL ID
+        name: 'Critical Health Alerts',
+        importance: Notifications.AndroidImportance.MAX, // Pops up over apps
+        vibrationPattern: [0, 250, 250, 250, 500, 500, 500], // Aggressive vibration (SOS style)
+        lightColor: '#FF0000', // Red light
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC, // Show on lock screen
+        sound: 'default', // Uses system default notification sound
       });
     }
 
