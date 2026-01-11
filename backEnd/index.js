@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const sql = require("./dbconnect"); // Importing your existing connection
-
+const axios=require("axios");
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -12,7 +12,7 @@ app.use(express.json());
 // ==========================================
 // ROUTES
 // ==========================================
-app.get("/", async (req, res) => {
+app.get("/a", async (req, res) => {
   res.send("Server Running Healthy");
 });
 // 1. ADMIN: Add User
@@ -152,7 +152,118 @@ app.delete("/medical-records/delete", async (req, res) => {
     res.status(500).json({ success: false, message: "Error deleting record" });
   }
 });
-// Start Server
+
+// Save Push Token Route
+app.post('/users/push-token', async (req, res) => {
+    const { id, token } = req.body;
+    try {
+        await sql`UPDATE users SET push_token = ${token} WHERE id = ${id}`;
+        res.json({ success: true, message: "Token saved" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Error saving token" });
+    }
+});
+
+// ... (Your other Login/Medical routes) ...
+
+
+// ==========================================
+// 2. BACKGROUND WORKER (Updated for Single Object)
+// ==========================================
+
+const PATIENT_ID = 1001; 
+const FIREBASE_URL = `https://healthcarebandtech-72c66-default-rtdb.firebaseio.com/patient${PATIENT_ID}/alerts.json`;
+
+let lastProcessedTime = 0; 
+
+async function pollFirebase() {
+    try {
+        const response = await axios.get(FIREBASE_URL);
+        const currentAlert = response.data;
+
+        if (!currentAlert || !currentAlert.timestamp) return;
+
+        // LOGIC CHANGE: Check if this single object is newer than the last one we saw
+        if (currentAlert.timestamp > lastProcessedTime) {
+            
+            console.log(`New Alert: ${currentAlert.type} at timestamp ${currentAlert.timestamp}`);
+            
+            // Update tracker
+            lastProcessedTime = currentAlert.timestamp;
+
+            // Process
+            await processAlert(currentAlert);
+        }
+
+    } catch (error) {
+        console.error("Polling Error:", error.message);
+    }
+}
+
+async function processAlert(alertObj) {
+    // A. Format Time to IST
+    const istDate = new Date(alertObj.timestamp * 1000).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata"
+    });
+
+    try {
+        // B. Insert into 'pastalerts' DB
+        await sql`
+            INSERT INTO pastalerts (user_id, alert_type, alert_value, alert_time, gps_lat, gps_lon)
+            VALUES (
+                ${PATIENT_ID}, 
+                ${alertObj.type}, 
+                ${alertObj.value.toString()}, 
+                ${istDate}, 
+                ${alertObj.gps.lat}, 
+                ${alertObj.gps.lon}
+            )
+        `;
+
+        // C. Fetch User's Push Token
+        const userResult = await sql`SELECT push_token FROM users WHERE id = ${PATIENT_ID}`;
+        
+        if (userResult.length > 0 && userResult[0].push_token) {
+            await sendPushNotification(userResult[0].push_token, alertObj.type, alertObj.value, istDate);
+        }
+
+    } catch (dbError) {
+        console.error("Database Insert Error:", dbError);
+    }
+}
+
+async function sendPushNotification(token, type, value, time) {
+    if (!Expo.isExpoPushToken(token)) return;
+
+    const messageBody = `${type.replace('_', ' ')} detected! Value: ${value}. Time: ${time}`;
+
+    const messages = [{
+        to: token,
+        sound: 'default',
+        title: '⚠️ Health Alert',
+        body: messageBody,
+        data: { type, value, time },
+    }];
+
+    try {
+        let chunks = expo.chunkPushNotifications(messages);
+        for (let chunk of chunks) {
+            await expo.sendPushNotificationsAsync(chunk);
+        }
+        console.log("Notification sent!");
+    } catch (error) {
+        console.error("Notification Error:", error);
+    }
+}
+
+// ==========================================
+// 3. START
+// ==========================================
+
 app.listen(port, () => {
-  console.log(`Backend server running on port ${port}`);
+    console.log(`Backend server running on port ${port}`);
+    
+    // Poll every 5 seconds
+    setInterval(pollFirebase, 5000);
 });
