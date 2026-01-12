@@ -72,8 +72,13 @@ export default function HomeScreen({ route, navigation }) {
           </TouchableOpacity>
 
           {/* Button 3: Past Alerts */}
-          <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('PastAlerts', { userId: userId })}>
-            <Text style={styles.menuText}>Past Alerts</Text>
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() =>
+              navigation.navigate("PastAlerts", { userId: userId })
+            }
+          >
+            <Text style={styles.menuText}>My Alerts</Text>
             <Ionicons name="chevron-forward" size={24} color="#0056D2" />
           </TouchableOpacity>
         </View>

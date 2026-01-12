@@ -1,31 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  FlatList, 
-  ActivityIndicator, 
+import React, { useState, useEffect } from "react";
+import {
+  StyleSheet,
+  View,
+  Text,
+  FlatList,
+  ActivityIndicator,
   TouchableOpacity,
   Modal,
   Dimensions,
-  Linking // Added for "Get Directions" feature
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import { WebView } from 'react-native-webview'; // <--- NEW IMPORT
+  Linking,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import axios from "axios";
+import { WebView } from "react-native-webview";
 
-const { width, height } = Dimensions.get('window');
+const { width, height } = Dimensions.get("window");
 
 export default function PastAlertsScreen({ route, navigation }) {
-  const { userId } = route.params; 
-  const API_BASE = "https://calycine-flexile-sumiko.ngrok-free.dev"; 
+  const { userId } = route.params;
+  const API_BASE = "https://calycine-flexile-sumiko.ngrok-free.dev"; // CHECK YOUR URL
 
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // --- MAP STATE ---
   const [mapVisible, setMapVisible] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [mapData, setMapData] = useState(null); // { pLat, pLon, hLat, hLon }
 
   useEffect(() => {
     fetchAlerts();
@@ -44,20 +44,68 @@ export default function PastAlertsScreen({ route, navigation }) {
     }
   };
 
-  const openMap = (lat, lon) => {
-    const latitude = parseFloat(lat);
-    const longitude = parseFloat(lon);
-    
-    if (!isNaN(latitude) && !isNaN(longitude)) {
-      setSelectedLocation({ lat: latitude, lon: longitude });
+  const openMap = (item) => {
+    // Only open map if valid patient coordinates exist
+    const pLat = parseFloat(item.gps_lat);
+    const pLon = parseFloat(item.gps_lon);
+
+    if (!isNaN(pLat) && !isNaN(pLon)) {
+      setMapData({
+        pLat: pLat,
+        pLon: pLon,
+        hLat: item.hosp_lat ? parseFloat(item.hosp_lat) : null,
+        hLon: item.hosp_lon ? parseFloat(item.hosp_lon) : null,
+      });
       setMapVisible(true);
     } else {
-        alert("Invalid GPS data");
+      alert("Invalid GPS data for this alert");
     }
   };
 
-  // --- THIS GENERATES THE FREE MAP HTML ---
-  const getMapHtml = (lat, lon) => {
+  // --- ADVANCED MAP HTML (Leaflet) ---
+  const getMapHtml = (data) => {
+    if (!data) return "";
+    const { pLat, pLon, hLat, hLon } = data;
+
+    let scriptContent = `
+        var map = L.map('map').setView([${pLat}, ${pLon}], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // 1. Patient Marker (Red)
+        var patientIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: "<div style='background-color:#D32F2F;width:15px;height:15px;border-radius:50%;border:2px solid white;'></div>",
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+        L.marker([${pLat}, ${pLon}], {icon: patientIcon}).addTo(map)
+            .bindPopup('<b>You were here</b>').openPopup();
+    `;
+
+    // 2. Hospital Marker (Blue) - Only if exists
+    if (hLat && hLon) {
+      scriptContent += `
+            var hospitalIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: "<div style='background-color:#1976D2;width:15px;height:15px;border-radius:50%;border:2px solid white;'></div>",
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+            L.marker([${hLat}, ${hLon}], {icon: hospitalIcon}).addTo(map)
+                .bindPopup('<b>Hospital Location</b>');
+
+            // Draw Line
+            var latlngs = [
+                [${pLat}, ${pLon}],
+                [${hLat}, ${hLon}]
+            ];
+            var polyline = L.polyline(latlngs, {color: 'blue', dashArray: '5, 10'}).addTo(map);
+            map.fitBounds(polyline.getBounds(), {padding: [50, 50]});
+        `;
+    }
+
     return `
       <!DOCTYPE html>
       <html>
@@ -65,68 +113,80 @@ export default function PastAlertsScreen({ route, navigation }) {
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
           <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
           <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-          <style>
-            body { margin: 0; padding: 0; }
-            #map { height: 100vh; width: 100vw; }
-          </style>
+          <style> body { margin: 0; } #map { height: 100vh; width: 100vw; } </style>
         </head>
         <body>
           <div id="map"></div>
-          <script>
-            // Initialize Leaflet Map
-            var map = L.map('map').setView([${lat}, ${lon}], 15);
-
-            // Use OpenStreetMap Tiles (Completely Free)
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-              attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
-
-            // Add a Marker
-            L.marker([${lat}, ${lon}]).addTo(map)
-              .bindPopup('<b>Alert Location</b><br>Patient was here.')
-              .openPopup();
-          </script>
+          <script>${scriptContent}</script>
         </body>
       </html>
     `;
   };
 
   const renderAlertItem = ({ item }) => {
-    const typeStr = item.alert_type || "UNKNOWN";
+    // 1. Safety Check: If alert_type is missing, give it a default string
+    const typeStr = item.alert_type || "UNKNOWN_TYPE";
+
+    // 2. Safety Check: If status is missing, default to 'Pending'
+    const statusStr = item.status || "Pending";
+
     const isCritical = typeStr.includes("LOW") || typeStr.includes("HIGH");
     const iconName = typeStr.includes("TEMP") ? "thermometer" : "heart";
-    const alertColor = isCritical ? "#FF4444" : "#FFBB33"; 
+    const alertColor = isCritical ? "#D32F2F" : "#F57C00";
+
+    // Status Logic
+    const isServed = statusStr === "Served";
+    const isAssigned = statusStr === "Assigned";
+    const statusColor = isServed ? "#2E7D32" : isAssigned ? "#F57C00" : "#999";
 
     return (
       <View style={[styles.card, { borderLeftColor: alertColor }]}>
+        {/* Header: Type & Status */}
         <View style={styles.headerRow}>
           <View style={styles.titleContainer}>
             <Ionicons name={iconName} size={24} color={alertColor} />
-            <Text style={styles.alertTitle}>
-              {typeStr.replace('_', ' ')}
+            <Text style={styles.alertTitle}>{typeStr.replace("_", " ")}</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.statusText}>{statusStr.toUpperCase()}</Text>
+          </View>
+        </View>
+
+        {/* Value & Time */}
+        <View style={styles.infoRow}>
+          <Text style={styles.alertValue}>{item.alert_value}</Text>
+          <Text style={styles.timestamp}>
+            <Ionicons name="time-outline" size={14} color="#666" />{" "}
+            {item.alert_time}
+          </Text>
+        </View>
+
+        {/* Hospital Info */}
+        {(isServed || isAssigned) && item.hospital_name && (
+          <View style={styles.hospitalContainer}>
+            <Ionicons name="medical" size={16} color="#0056D2" />
+            <Text style={styles.hospitalText}>
+              Handled by:{" "}
+              <Text style={{ fontWeight: "bold" }}>{item.hospital_name}</Text>
             </Text>
           </View>
-          <Text style={styles.alertValue}>{item.alert_value}</Text>
-        </View>
-        
-        <Text style={styles.timestamp}>
-          <Ionicons name="time-outline" size={14} color="#666" /> {item.alert_time}
-        </Text>
-        
+        )}
+
         <View style={styles.divider} />
-        
+
+        {/* Footer: Map Button */}
         <View style={styles.footerRow}>
-            <Text style={styles.message}>
-            All the best
-            </Text>
-            
-            <TouchableOpacity 
-                style={styles.mapButton} 
-                onPress={() => openMap(item.gps_lat, item.gps_lon)}
-            >
-                <Ionicons name="map" size={16} color="white" />
-                <Text style={styles.mapButtonText}>View on Map</Text>
-            </TouchableOpacity>
+          <Text style={styles.message}>
+            GPS Log: {item.gps_lat}, {item.gps_lon}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.mapButton}
+            onPress={() => openMap(item)}
+          >
+            <Ionicons name="map" size={16} color="white" />
+            <Text style={styles.mapButtonText}>View Map</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -140,16 +200,21 @@ export default function PastAlertsScreen({ route, navigation }) {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Past Alerts History</Text>
-        <View style={{ width: 24 }} /> 
       </View>
 
       {/* LIST */}
       {loading ? (
-        <ActivityIndicator size="large" color="#0056D2" style={{ marginTop: 50 }} />
+        <ActivityIndicator
+          size="large"
+          color="#0056D2"
+          style={{ marginTop: 50 }}
+        />
       ) : (
         <FlatList
           data={alerts}
-          keyExtractor={(item) => item.id ? item.id.toString() : Math.random().toString()}
+          keyExtractor={(item) =>
+            item.id ? item.id.toString() : Math.random().toString()
+          }
           renderItem={renderAlertItem}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
@@ -158,100 +223,157 @@ export default function PastAlertsScreen({ route, navigation }) {
         />
       )}
 
-      {/* MAP MODAL WITH WEBVIEW */}
+      {/* MAP MODAL */}
       <Modal
         animationType="slide"
-        transparent={true}
+        transparent={false} // Changed to false to act like a full screen
         visible={mapVisible}
         onRequestClose={() => setMapVisible(false)}
       >
         <View style={styles.modalContainer}>
-            <View style={styles.mapWrapper}>
-                
-                {/* Header inside Modal */}
-                <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Alert Location</Text>
-                    <TouchableOpacity onPress={() => setMapVisible(false)}>
-                        <Ionicons name="close" size={28} color="#333" />
-                    </TouchableOpacity>
-                </View>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Incident Map</Text>
+            <TouchableOpacity onPress={() => setMapVisible(false)}>
+              <Ionicons name="close" size={28} color="#333" />
+            </TouchableOpacity>
+          </View>
 
-                {/* THE MAP */}
-                {selectedLocation && (
-                    <WebView
-                        originWhitelist={['*']}
-                        source={{ html: getMapHtml(selectedLocation.lat, selectedLocation.lon) }}
-                        style={styles.map}
-                    />
-                )}
+          {mapData && (
+            <WebView
+              originWhitelist={["*"]}
+              source={{ html: getMapHtml(mapData) }}
+              style={{ flex: 1 }}
+            />
+          )}
 
-                {/* Extra: Button to open in Real Google Maps for Directions */}
-                <TouchableOpacity 
-                    style={styles.directionsButton}
-                    onPress={() => {
-                        const url = `https://www.google.com/maps/search/?api=1&query=${selectedLocation.lat},${selectedLocation.lon}`;
-                        Linking.openURL(url);
-                    }}
-                >
-                    <Text style={styles.directionsText}>Open in Google Maps App</Text>
-                    <Ionicons name="open-outline" size={16} color="white" style={{marginLeft:5}} />
-                </TouchableOpacity>
-
-            </View>
+          {/* Directions Button */}
+          {mapData && mapData.hLat && (
+            <TouchableOpacity
+              style={styles.directionsBtn}
+              onPress={() => {
+                const url = `http://maps.google.com/maps?saddr=${mapData.pLat},${mapData.pLon}&daddr=${mapData.hLat},${mapData.hLon}`;
+                Linking.openURL(url);
+              }}
+            >
+              <Text style={styles.directionsText}>
+                Open Route in Google Maps
+              </Text>
+              <Ionicons
+                name="navigate"
+                size={18}
+                color="white"
+                style={{ marginLeft: 8 }}
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </Modal>
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F7FA' },
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingTop: 50, 
-    paddingBottom: 20, 
-    paddingHorizontal: 20, 
-    backgroundColor: '#fff',
-    elevation: 2 
+  container: { flex: 1, backgroundColor: "#F5F7FA" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    backgroundColor: "#fff",
+    elevation: 2,
   },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', marginLeft: 15, flex: 1 },
+  headerTitle: { fontSize: 20, fontWeight: "bold", marginLeft: 15 },
   listContent: { padding: 20 },
+
   card: {
-    backgroundColor: 'white',
-    borderRadius: 10,
+    backgroundColor: "white",
+    borderRadius: 12,
     padding: 15,
     marginBottom: 15,
     elevation: 3,
-    borderLeftWidth: 5, 
+    borderLeftWidth: 5,
   },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  titleContainer: { flexDirection: 'row', alignItems: 'center' },
-  alertTitle: { fontSize: 16, fontWeight: 'bold', marginLeft: 10, color: '#333' },
-  alertValue: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  timestamp: { fontSize: 14, color: '#666', marginBottom: 10 },
-  divider: { height: 1, backgroundColor: '#EEE', marginVertical: 8 },
-  footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  message: { fontSize: 12, color: '#888', fontStyle: 'italic', flex: 1 },
-  emptyText: { textAlign: 'center', marginTop: 50, color: '#999', fontSize: 16 },
-  
-  mapButton: {
-      flexDirection: 'row',
-      backgroundColor: '#0056D2',
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      borderRadius: 20,
-      alignItems: 'center',
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  mapButtonText: { color: 'white', fontSize: 12, fontWeight: 'bold', marginLeft: 5 },
+  titleContainer: { flexDirection: "row", alignItems: "center" },
+  alertTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginLeft: 10,
+    color: "#333",
+  },
 
-  // Modal Styles
-  modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-  mapWrapper: { width: width * 0.9, height: height * 0.7, backgroundColor: 'white', borderRadius: 15, overflow: 'hidden' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, backgroundColor: '#f9f9f9', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  modalTitle: { fontWeight: 'bold', fontSize: 16 },
-  map: { flex: 1 },
-  directionsButton: { backgroundColor: '#28a745', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 15 },
-  directionsText: { color: 'white', fontWeight: 'bold' }
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5 },
+  statusText: { color: "white", fontSize: 10, fontWeight: "bold" },
+
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+  },
+  alertValue: { fontSize: 22, fontWeight: "bold", color: "#333" },
+  timestamp: { fontSize: 13, color: "#666" },
+
+  hospitalContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E3F2FD",
+    padding: 8,
+    borderRadius: 5,
+    marginTop: 10,
+  },
+  hospitalText: { fontSize: 13, color: "#0056D2", marginLeft: 6 },
+
+  divider: { height: 1, backgroundColor: "#EEE", marginVertical: 10 },
+
+  footerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  message: { fontSize: 11, color: "#888", fontStyle: "italic" },
+  mapButton: {
+    flexDirection: "row",
+    backgroundColor: "#0056D2",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    alignItems: "center",
+  },
+  mapButtonText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
+    marginLeft: 5,
+  },
+  emptyText: { textAlign: "center", marginTop: 50, color: "#999" },
+
+  // MODAL
+  modalContainer: { flex: 1, backgroundColor: "#fff" },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 20,
+    paddingTop: 50,
+    backgroundColor: "#f9f9f9",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  modalTitle: { fontWeight: "bold", fontSize: 18 },
+
+  directionsBtn: {
+    backgroundColor: "#2E7D32",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 15,
+    margin: 20,
+    borderRadius: 10,
+  },
+  directionsText: { color: "white", fontWeight: "bold", fontSize: 16 },
 });
