@@ -117,7 +117,7 @@ export default function PastAlertsScreen({ route, navigation }) {
         
         <View style={styles.footerRow}>
             <Text style={styles.message}>
-            Lat: {item.gps_lat}, Lon: {item.gps_lon}
+            All the best
             </Text>
             
             <TouchableOpacity 
@@ -125,7 +125,7 @@ export default function PastAlertsScreen({ route, navigation }) {
                 onPress={() => openMap(item.gps_lat, item.gps_lon)}
             >
                 <Ionicons name="map" size={16} color="white" />
-                <Text style={styles.mapButtonText}>View</Text>
+                <Text style={styles.mapButtonText}>View on Map</Text>
             </TouchableOpacity>
         </View>
       </View>
