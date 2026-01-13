@@ -80,8 +80,10 @@ export default function PastAlertsScreen({ route, navigation }) {
             iconSize: [20, 20],
             iconAnchor: [10, 10]
         });
+        
+        // UPDATED LABEL HERE
         L.marker([${pLat}, ${pLon}], {icon: patientIcon}).addTo(map)
-            .bindPopup('<b>You were here</b>').openPopup();
+            .bindPopup('<b>Patient Location</b>').openPopup();
     `;
 
     // 2. Hospital Marker (Blue) - Only if exists
@@ -93,6 +95,8 @@ export default function PastAlertsScreen({ route, navigation }) {
                 iconSize: [20, 20],
                 iconAnchor: [10, 10]
             });
+            
+            // UPDATED LABEL HERE
             L.marker([${hLat}, ${hLon}], {icon: hospitalIcon}).addTo(map)
                 .bindPopup('<b>Hospital Location</b>');
 
@@ -177,15 +181,15 @@ export default function PastAlertsScreen({ route, navigation }) {
         {/* Footer: Map Button */}
         <View style={styles.footerRow}>
           <Text style={styles.message}>
-            GPS Log: {item.gps_lat}, {item.gps_lon}
+            Open map to view the location of Patient and Hospital
           </Text>
 
           <TouchableOpacity
             style={styles.mapButton}
             onPress={() => openMap(item)}
           >
-            <Ionicons name="map" size={16} color="white" />
-            <Text style={styles.mapButtonText}>View Map</Text>
+            <Ionicons name="location" size={16} color="white" />
+            {/* <Text style={styles.mapButtonText}>View Map</Text> */}
           </TouchableOpacity>
         </View>
       </View>
@@ -199,7 +203,7 @@ export default function PastAlertsScreen({ route, navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Past Alerts History</Text>
+        <Text style={styles.headerTitle}>Alerts History</Text>
       </View>
 
       {/* LIST */}
@@ -226,7 +230,7 @@ export default function PastAlertsScreen({ route, navigation }) {
       {/* MAP MODAL */}
       <Modal
         animationType="slide"
-        transparent={false} // Changed to false to act like a full screen
+        transparent={false}
         visible={mapVisible}
         onRequestClose={() => setMapVisible(false)}
       >

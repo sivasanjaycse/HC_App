@@ -329,22 +329,22 @@ async function sendPushNotification(token, type, value, time) {
   }
 }
 
-app.get("/alerts/:userId", async (req, res) => {
-  const { userId } = req.params;
+// app.get("/alerts/:userId", async (req, res) => {
+//   const { userId } = req.params;
 
-  try {
-    const result = await sql`
-      SELECT * FROM pastalerts 
-      WHERE user_id = ${userId}
-      ORDER BY id DESC
-    `;
+//   try {
+//     const result = await sql`
+//       SELECT * FROM pastalerts
+//       WHERE user_id = ${userId}
+//       ORDER BY id DESC
+//     `;
 
-    res.json({ success: true, data: result });
-  } catch (err) {
-    console.error("Error fetching alerts:", err);
-    res.status(500).json({ success: false, message: "Failed to fetch alerts" });
-  }
-});
+//     res.json({ success: true, data: result });
+//   } catch (err) {
+//     console.error("Error fetching alerts:", err);
+//     res.status(500).json({ success: false, message: "Failed to fetch alerts" });
+//   }
+// });
 // ==========================================
 // HOSPI-END ROUTES
 // ==========================================
