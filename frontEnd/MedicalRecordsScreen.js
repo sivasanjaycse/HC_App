@@ -19,7 +19,7 @@ import axios from "axios";
 
 export default function MedicalRecordsScreen({ route, navigation }) {
   const { username, userId } = route.params;
-  const API_BASE = "https://calycine-flexile-sumiko.ngrok-free.dev"; // CHECK YOUR URL
+  const API_BASE = "https://hc-server-96w6.onrender.com"; // CHECK YOUR URL
 
   const [records, setRecords] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);

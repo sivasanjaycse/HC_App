@@ -18,7 +18,7 @@ const { width, height } = Dimensions.get("window");
 
 export default function PastAlertsScreen({ route, navigation }) {
   const { userId } = route.params;
-  const API_BASE = "https://calycine-flexile-sumiko.ngrok-free.dev"; // CHECK YOUR URL
+  const API_BASE = "https://hc-server-96w6.onrender.com"; // CHECK YOUR URL
 
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
